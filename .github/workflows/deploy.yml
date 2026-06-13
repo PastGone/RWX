@@ -19,41 +19,8 @@ permissions:
   contents: write
 
 jobs:
-  # 1. 生成通用 Fat JAR（只在 Linux 上生成一次）
-  build-fat-jar:
-    name: Build Cross-Platform JAR
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Set up Temurin 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
-
-      - name: Ensure Gradle wrapper is executable
-        run: chmod +x ./gradlew
-
-      - name: Build fat JAR
-        run: |
-          set -o pipefail
-          ./gradlew --no-daemon --max-workers=4 :desktop:shadowJar 2>&1 | tee jar-build.log
-
-      - name: Upload fat JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RWX-fat-jar
-          path: desktop/build/distributions/*-all.jar
-          if-no-files-found: error
-          retention-days: 14
-
-  # 2. 生成平台特定的桌面包和轻量级包
   build-desktop:
     name: ${{ matrix.name }}
-    needs: build-fat-jar
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -135,12 +102,6 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x ./gradlew
 
-      - name: Download fat JAR artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: RWX-fat-jar
-          path: desktop/build/distributions
-
       - name: Build desktop package (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -160,7 +121,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload lightweight distribution artifact
+      - name: Upload lightweight artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}-lightweight
@@ -262,7 +223,7 @@ jobs:
           pattern: RWX-*-desktop
           merge-multiple: true
 
-      - name: Download lightweight JAR artifacts
+      - name: Download lightweight artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
