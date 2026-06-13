@@ -432,8 +432,13 @@ tasks.register<Jar>("shadowJar") {
     group = "distribution"
     description = "Create a fat JAR containing all dependencies (cross-platform)."
     
-    // 只依赖编译任务，不依赖 jar 任务（jar 任务需要原生库）
-    dependsOn("compileJava", "compileKotlin")
+    // 依赖其他子模块的 jar 任务（确保依赖 JAR 存在）
+    // 排除 desktop（自身）和 android（不需要）
+    dependsOn(
+        rootProject.subprojects
+            .filter { it.name != "desktop" && it.name != "android" }
+            .map { it.tasks.named("jar") }
+    )
     
     archiveFileName.set(lightweightJarName)
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
@@ -441,10 +446,10 @@ tasks.register<Jar>("shadowJar") {
     // Include compiled classes
     from(sourceSets.main.get().output)
     
-    // Include all dependency JARs
+    // Include all dependency JARs（过滤掉不存在的文件和原生库）
     from({
         configurations.runtimeClasspath.get()
-            .filter { it.extension == "jar" && !it.name.contains("natives-") }
+            .filter { it.exists() && it.extension == "jar" && !it.name.contains("natives-") }
             .map { zipTree(it) }
     })
     
