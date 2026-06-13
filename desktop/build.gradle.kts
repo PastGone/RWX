@@ -432,13 +432,14 @@ tasks.register<Jar>("shadowJar") {
     group = "distribution"
     description = "Create a fat JAR containing all dependencies (cross-platform)."
     
-    dependsOn("jar")
+    // 只依赖编译任务，不依赖 jar 任务（jar 任务需要原生库）
+    dependsOn("compileJava", "compileKotlin")
     
     archiveFileName.set(lightweightJarName)
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
     
-    // Include main JAR contents
-    from(zipTree(tasks.named<Jar>("jar").get().archiveFile.get()))
+    // Include compiled classes
+    from(sourceSets.main.get().output)
     
     // Include all dependency JARs
     from({
