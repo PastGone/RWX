@@ -19,8 +19,41 @@ permissions:
   contents: write
 
 jobs:
+  # 1. 生成通用 Fat JAR（只在 Linux 上生成一次）
+  build-fat-jar:
+    name: Build Cross-Platform JAR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Temurin 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Ensure Gradle wrapper is executable
+        run: chmod +x ./gradlew
+
+      - name: Build fat JAR
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --max-workers=4 :desktop:shadowJar 2>&1 | tee jar-build.log
+
+      - name: Upload fat JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RWX-fat-jar
+          path: desktop/build/distributions/*-all.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  # 2. 生成平台特定的桌面包和轻量级包
   build-desktop:
     name: ${{ matrix.name }}
+    needs: build-fat-jar
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -102,22 +135,36 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x ./gradlew
 
+      - name: Download fat JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RWX-fat-jar
+          path: desktop/build/distributions
+
       - name: Build desktop package (Unix)
         if: runner.os != 'Windows'
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --max-workers=${{ matrix.gradle_max_workers }} :desktop:packageDesktopDistribution 2>&1 | tee desktop-package.log
+          ./gradlew --no-daemon --max-workers=${{ matrix.gradle_max_workers }} :desktop:packageDesktopDistribution :desktop:packageLightweightDistribution 2>&1 | tee desktop-package.log
 
       - name: Build desktop package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\gradlew.bat --no-daemon --max-workers=${{ matrix.gradle_max_workers }} :desktop:packageDesktopDistribution 2>&1 | Tee-Object -FilePath desktop-package.log
+        run: .\gradlew.bat --no-daemon --max-workers=${{ matrix.gradle_max_workers }} :desktop:packageDesktopDistribution :desktop:packageLightweightDistribution 2>&1 | Tee-Object -FilePath desktop-package.log
 
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: desktop/build/distributions/*-${{ matrix.platform_id }}-desktop.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload lightweight distribution artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-lightweight
+          path: desktop/build/distributions/*-${{ matrix.platform_id }}-lightweight.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -213,6 +260,13 @@ jobs:
         with:
           path: release-artifacts
           pattern: RWX-*-desktop
+          merge-multiple: true
+
+      - name: Download lightweight JAR artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: RWX-*-lightweight
           merge-multiple: true
 
       - name: Download Android APK artifact

@@ -421,6 +421,150 @@ if (osType == OSType.WINDOWS) {
     }
 }
 
+// ======================== Lightweight JAR Distribution ========================
+// This task creates a minimal JAR distribution that uses system Java runtime
+// No bundled JRE - just the game JAR, dependencies, and native libraries
+
+val lightweightJarName = "${appName}-${appVersion}-all.jar"
+
+// 1. 通用 Fat JAR（跨平台，只需生成一次）
+tasks.register<Jar>("shadowJar") {
+    group = "distribution"
+    description = "Create a fat JAR containing all dependencies (cross-platform)."
+    
+    dependsOn("jar")
+    
+    archiveFileName.set(lightweightJarName)
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    
+    // Include main JAR contents
+    from(zipTree(tasks.named<Jar>("jar").get().archiveFile.get()))
+    
+    // Include all dependency JARs
+    from({
+        configurations.runtimeClasspath.get()
+            .filter { it.extension == "jar" && !it.name.contains("natives-") }
+            .map { zipTree(it) }
+    })
+    
+    // Exclude duplicate signatures
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
+    
+    manifest {
+        attributes["Main-Class"] = mainClassName
+        attributes["Class-Path"] = "."
+    }
+    
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// 2. 平台特定的原生库包
+val nativesPackDir = layout.buildDirectory.dir("natives-pack")
+
+tasks.register<Sync>("stageNativesPack") {
+    group = "distribution"
+    description = "Stage platform-specific native libraries."
+    
+    dependsOn(extractNatives, buildRocketConnectorNative)
+    
+    into(nativesPackDir)
+    
+    // Copy native libraries
+    into("lib/natives") {
+        from(layout.buildDirectory.dir("libs/natives")) {
+            when (osType) {
+                OSType.WINDOWS -> include("*.dll")
+                OSType.LINUX -> include("*.so")
+                OSType.MACOS -> include("*.dylib")
+            }
+        }
+        from(rocketConnectorNativeDir) {
+            when (osType) {
+                OSType.WINDOWS -> include("*.dll")
+                OSType.LINUX -> include("*.so")
+                OSType.MACOS -> include("*.dylib")
+            }
+        }
+        from(rocketConnectorNativeDir.map { it.dir("Release") }) {
+            when (osType) {
+                OSType.WINDOWS -> include("*.dll")
+                OSType.LINUX -> include("*.so")
+                OSType.MACOS -> include("*.dylib")
+            }
+        }
+    }
+    
+    doLast {
+        // Patch Linux shared objects
+        val nativesDir = nativesPackDir.get().asFile.resolve("lib/natives")
+        patchLinuxSharedObjects(nativesDir)
+    }
+}
+
+tasks.register<Zip>("packageNatives") {
+    group = "distribution"
+    description = "Create a zip archive for platform-specific native libraries."
+    
+    dependsOn("stageNativesPack")
+    
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    archiveFileName.set("${appName}-${appVersion}-${platformId}-natives.zip")
+    
+    from(nativesPackDir)
+}
+
+// 3. 完整的轻量级分发包（包含通用 JAR + 平台特定原生库）
+val lightweightDistDir = layout.buildDirectory.dir("lightweight-dist")
+
+tasks.register<Sync>("stageLightweightDistribution") {
+    group = "distribution"
+    description = "Stage the complete lightweight distribution."
+    
+    dependsOn("shadowJar", "stageNativesPack")
+    
+    into(lightweightDistDir)
+    
+    // Copy fat JAR
+    from(layout.buildDirectory.dir("distributions").map { it.file(lightweightJarName) })
+    
+    // Copy natives
+    from(nativesPackDir)
+    
+    // Copy game resources
+    from(project.file("../res")) { into("res") }
+    from(project.file("../assets")) { into("assets") }
+    from(project.file("../font")) { into("font") }
+    from(rootProject.file("LICENSE"))
+    
+    doLast {
+        // Create run script for Linux/Mac
+        val runScript = lightweightDistDir.get().asFile.resolve("run.sh")
+        runScript.writeText("""#!/bin/bash
+cd "$(dirname "$0")"
+java -Djava.library.path=lib/natives -jar $lightweightJarName "$@"
+""")
+        runScript.setExecutable(true)
+        
+        // Create run script for Windows
+        val runBat = lightweightDistDir.get().asFile.resolve("run.bat")
+        runBat.writeText("@echo off\ncd /d \"%~dp0\"\njava -Djava.library.path=lib/natives -jar $lightweightJarName %*\n")
+    }
+}
+
+tasks.register<Zip>("packageLightweightDistribution") {
+    group = "distribution"
+    description = "Create a zip archive for the complete lightweight distribution."
+    
+    dependsOn("stageLightweightDistribution")
+    
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    archiveFileName.set("${appName}-${appVersion}-${platformId}-lightweight.zip")
+    
+    from(lightweightDistDir) {
+        into(appName)
+    }
+}
+
 // ================== P2P Config========================
 tasks.register<JavaExec>("p2pDiagnostics") {
     group = "verification"
