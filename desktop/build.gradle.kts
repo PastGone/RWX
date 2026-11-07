@@ -441,16 +441,17 @@ tasks.register<Sync>("stageLightweightDistribution") {
     
     into(lightweightDistDir)
     
-    // 从 jpackage 镜像中提取 lib/app 目录（包含所有 JAR）
+    // 从 jpackage 镜像中提取 lib/app 目录（包含所有 JAR，排除 natives 子目录）
     from(jpackageImageDir.map { 
         it.dir(if (os.contains("mac")) "$appName.app/Contents/app" else "$appName/lib/app")
     }) {
+        exclude("natives/**")
         into("lib/app")
     }
     
-    // 从 jpackage 镜像中提取 natives 目录
+    // 从 jpackage 镜像中提取 natives 目录（jpackage 会把 input/natives 复制到 lib/app/natives）
     from(jpackageImageDir.map {
-        it.dir(if (os.contains("mac")) "$appName.app/Contents/natives" else "$appName/lib/natives")
+        it.dir(if (os.contains("mac")) "$appName.app/Contents/app/natives" else "$appName/lib/app/natives")
     }) {
         into("lib/natives")
     }
