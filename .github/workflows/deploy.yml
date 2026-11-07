@@ -87,10 +87,10 @@ jobs:
           echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
           git clone --depth 1 https://github.com/libRocket/libRocket.git C:\libRocket
           cmake -S C:\libRocket\Build -B C:\libRocket\Build\build `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-            -DBUILD_SHARED_LIBS=OFF `
-            -DBUILD_SAMPLES=OFF `
+            "-DCMAKE_BUILD_TYPE=Release" `
+            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" `
+            "-DBUILD_SHARED_LIBS=OFF" `
+            "-DBUILD_SAMPLES=OFF" `
             -Wno-dev `
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           cmake --build C:\libRocket\Build\build --config Release
