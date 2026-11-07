@@ -494,7 +494,7 @@ tasks.register<Zip>("packageLightweightDistribution") {
     from(lightweightDistDir) {
         into(appName)
         filesMatching("run.sh") {
-            fileMode = 0b111101101
+            permissions { unix("rwxr-xr-x") }
         }
     }
 }
