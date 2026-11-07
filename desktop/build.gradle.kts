@@ -463,62 +463,39 @@ tasks.register<Sync>("stageLightweightDistribution") {
     from(rootProject.file("LICENSE"))
     
     doLast {
-        // 创建启动脚本（Linux/Mac）
-        val runSh = lightweightDistDir.get().asFile.resolve("run.sh")
-        runSh.writeText("""#!/bin/bash
-cd "$(dirname "$0")"
-java -Djava.library.path=lib/natives -cp "lib/app/*" $mainClassName "$@"
-""")
-        runSh.setExecutable(true)
-        
-        // 创建启动脚本（Windows）
-        val runBat = lightweightDistDir.get().asFile.resolve("run.bat")
-        runBat.writeText("""@echo off
+        if (osType == OSType.WINDOWS) {
+            // 创建启动脚本（Windows）
+            val runBat = lightweightDistDir.get().asFile.resolve("run.bat")
+            runBat.writeText("""@echo off
 cd /d "%~dp0"
 java -Djava.library.path=lib\natives -cp "lib\app\*" $mainClassName %*
 """)
+        } else {
+            // 创建启动脚本（Linux/Mac）
+            val runSh = lightweightDistDir.get().asFile.resolve("run.sh")
+            runSh.writeText("""#!/bin/bash
+cd "$(dirname "$0")"
+java -Djava.library.path=lib/natives -cp "lib/app/*" $mainClassName "$@"
+""")
+            runSh.setExecutable(true)
+        }
     }
 }
 
-// 使用系统 zip 命令打包（保留 Unix 权限）
-if (osType == OSType.WINDOWS) {
-    tasks.register<Zip>("packageLightweightDistribution") {
-        group = "distribution"
-        description = "Create a zip archive for the lightweight distribution."
-        dependsOn("stageLightweightDistribution")
-        
-        destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-        archiveFileName.set("$appName-$appVersion-$platformId-lightweight.zip")
-        
-        from(lightweightDistDir) {
-            into(appName)
+// 使用 Gradle Zip 任务打包，显式设置 run.sh 的可执行权限（0755）
+tasks.register<Zip>("packageLightweightDistribution") {
+    group = "distribution"
+    description = "Create a zip archive for the lightweight distribution."
+    dependsOn("stageLightweightDistribution")
+
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    archiveFileName.set("$appName-$appVersion-$platformId-lightweight.zip")
+
+    from(lightweightDistDir) {
+        into(appName)
+        filesMatching("run.sh") {
+            fileMode = 0b111101101
         }
-    }
-} else {
-    tasks.register<Exec>("packageLightweightDistribution") {
-        group = "distribution"
-        description = "Create a zip archive for the lightweight distribution using system zip."
-        dependsOn("stageLightweightDistribution")
-        
-        val outputZip = layout.buildDirectory.dir("distributions")
-            .get().asFile.resolve("$appName-$appVersion-$platformId-lightweight.zip")
-        
-        workingDir(lightweightDistDir.get().asFile)
-        outputs.file(outputZip)
-        
-        doFirst {
-            val outputDir = layout.buildDirectory.dir("distributions").get().asFile
-            outputDir.mkdirs()
-            if (outputZip.exists()) {
-                outputZip.delete()
-            }
-        }
-        
-        commandLine(
-            "zip", "-qr",
-            outputZip.absolutePath,
-            "."
-        )
     }
 }
 
